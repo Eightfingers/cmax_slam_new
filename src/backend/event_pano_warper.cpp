@@ -250,7 +250,7 @@ namespace cmax_slam
         // test_cuda(N, h_A, h_B, h_C);
         // test_cuda(N, h_A, h_B, h_C);
         // LOG(INFO) << "Test cuda worked";
-        // Free host memory
+        // // Free host memory
         // free(h_A);
         // free(h_B);
         // free(h_C);
@@ -366,180 +366,165 @@ namespace cmax_slam
         warpEventsWrapper(h_e_ray_rotated, h_warped_pixel_pos, center_, fx, fy, subset_size);
         // Split warped pano pixel popsition to new and old to be appended on diff IL respectively
 
-        float2 *h_new_warped_pixel_pos;
-        int2 *h_new_x_y;
-        float2 *h_new_dx_dy;
+        // float2 *h_new_warped_pixel_pos;
+        // int2 *h_new_x_y;
+        // float2 *h_new_dx_dy;
 
-        float2 *h_old_warped_pixel_pos;
-        int2 *h_old_x_y;
-        float2 *h_old_dx_dy;
+        // float2 *h_old_warped_pixel_pos;
+        // int2 *h_old_x_y;
+        // float2 *h_old_dx_dy;
 
-        if (num_new_events > 0)
-        {
-            h_new_warped_pixel_pos = (float2 *)malloc(num_new_events * sizeof(float2));
-            h_new_x_y = (int2 *)malloc(num_new_events * sizeof(int2));
-            h_new_dx_dy = (float2 *)malloc(num_new_events * sizeof(float2));
-            getIntAndDecimalWrapper(h_new_warped_pixel_pos, h_new_x_y, h_new_dx_dy, num_new_events);
-            free(h_new_x_y);
-            free(h_new_dx_dy);
-        }
-
-        if (num_old_events > 0)
-        {
-            h_old_warped_pixel_pos = (float2 *)malloc(num_old_events * sizeof(float2));
-            h_old_x_y = (int2 *)malloc(num_old_events * sizeof(int2));
-            h_old_dx_dy = (float2 *)malloc(num_old_events * sizeof(float2));
-            getIntAndDecimalWrapper(h_old_warped_pixel_pos, h_old_x_y, h_old_dx_dy, num_old_events);
-            free(h_old_x_y);
-            free(h_old_dx_dy);
-        }
-
-        int old_counter = 0;
-        int new_counter = 0;
-        for (int i = 0; i < subset_size; i++)
-        {
-            if (h_oldevent[i] == true)
-            {
-                h_old_warped_pixel_pos[old_counter] = h_warped_pixel_pos[i];
-                old_counter++;
-            }
-            else
-            {
-                h_new_warped_pixel_pos[new_counter] = h_warped_pixel_pos[i];
-                new_counter++;
-            }
-        }
-
-        // For Old
-        // getIntAndDecimalWrapper(h_old_warped_pixel_pos, h_old_x_y, h_old_dx_dy, num_old_events);
-        // For New
-        // getIntAndDecimalWrapper(h_new_warped_pixel_pos, h_new_x_y, h_new_dx_dy, num_new_events);
-
-        for (int i = 0; i < num_old_events; i++)
-        {
-            int xx = h_old_x_y[i].x;
-            int yy = h_old_x_y[i].y;
-            float dx = h_old_dx_dy[i].x;
-            float dy = h_old_dx_dy[i].y;
-            if (1 <= xx && xx < IL_old_.cols - 2 && 1 <= yy && yy < IL_old_.rows - 2)
-            {
-                IL_old_.at<float>(yy, xx) += (1.f - dx) * (1.f - dy);
-                IL_old_.at<float>(yy, xx + 1) += dx * (1.f - dy);
-                IL_old_.at<float>(yy + 1, xx) += (1.f - dx) * dy;
-                IL_old_.at<float>(yy + 1, xx + 1) += dx * dy;
-            }
-        }
-
-        for (int i = 0; i < num_new_events; i++)
-        {
-            int xx = h_new_x_y[i].x;
-            int yy = h_new_x_y[i].y;
-            float dx = h_new_dx_dy[i].x;
-            float dy = h_new_dx_dy[i].y;
-            if (1 <= xx && xx < IL_old_.cols - 2 && 1 <= yy && yy < IL_old_.rows - 2)
-            {
-                IL_new_.at<float>(yy, xx) += (1.f - dx) * (1.f - dy);
-                IL_new_.at<float>(yy, xx + 1) += dx * (1.f - dy);
-                IL_new_.at<float>(yy + 1, xx) += (1.f - dx) * dy;
-                IL_new_.at<float>(yy + 1, xx + 1) += dx * dy;
-            }
-        }
-
-        // Prepare data for bilinear fitting of events
-        // int2 IL_old_dim {IL_old_.rows, IL_old_.cols}; // Uncomment from here
-        // int2 IL_new_dim {IL_new_.rows, IL_new_.cols};
-        // std::cout << "IL_old_.rows:" << IL_old_.rows << std::endl;
-        // std::cout << "IL_old_.cols:" << IL_old_.cols << std::endl;
-
-        // int IL_old_num_pixels = IL_old_.rows * IL_old_.cols;
-        // float* h_IL_old = (float*)malloc(IL_old_num_pixels * sizeof(float));
-        // for (int i = 0; i < IL_old_.rows; i++)
+        // if (num_new_events > 0)
         // {
-        //     for (int j = 0 ; j < IL_old_.cols; j++)
-        //     {
-        //         int idx = (i * IL_old_.rows) + j;
-        //         h_IL_old[idx] = IL_old_.at<float>(i,j);
-        //     }
+        //     h_new_warped_pixel_pos = (float2 *)malloc(num_new_events * sizeof(float2));
+        //     h_new_x_y = (int2 *)malloc(num_new_events * sizeof(int2));
+        //     h_new_dx_dy = (float2 *)malloc(num_new_events * sizeof(float2));
+        //     getIntAndDecimalWrapper(h_new_warped_pixel_pos, h_new_x_y, h_new_dx_dy, num_new_events);
+        //     free(h_new_x_y);
+        //     free(h_new_dx_dy);
         // }
-        // // std::memcpy(h_IL_old, IL_old_.ptr<float>(), IL_old_num_pixels * sizeof(float));
 
-        // int IL_new_num_pixels = IL_new_.rows * IL_new_.cols;
-        // float* h_IL_new = (float*)malloc(IL_new_num_pixels * sizeof(float));
-        // for (int i = 0; i < IL_new_.rows; i++)
+        // if (num_old_events > 0)
         // {
-        //     for (int j = 0; j < IL_new_.cols; j++)
-        //     {
-        //         int idx = (i * IL_new_.rows) + j;
-        //         h_IL_new[idx] = IL_new_.at<float>(i,j);
-        //     }
+        //     h_old_warped_pixel_pos = (float2 *)malloc(num_old_events * sizeof(float2));
+        //     h_old_x_y = (int2 *)malloc(num_old_events * sizeof(int2));
+        //     h_old_dx_dy = (float2 *)malloc(num_old_events * sizeof(float2));
+        //     getIntAndDecimalWrapper(h_old_warped_pixel_pos, h_old_x_y, h_old_dx_dy, num_old_events);
+        //     free(h_old_x_y);
+        //     free(h_old_dx_dy);
         // }
-        // // std::memcpy(h_IL_new, IL_new_.ptr<float>(), IL_new_num_pixels * sizeof(float));
 
-        // // Split warped pano pixel popsition to new and old to be appended on diff IL respectively
-        // float2 *h_new_warped_pixel_pos = (float2 *)malloc(num_old_events * sizeof(float2));
-        // float2 *h_old_warped_pixel_pos = (float2 *)malloc(num_new_events * sizeof(float2));
         // int old_counter = 0;
         // int new_counter = 0;
         // for (int i = 0; i < subset_size; i++)
         // {
-        //     if (h_oldevent[i] == true){
+        //     if (h_oldevent[i] == true)
+        //     {
         //         h_old_warped_pixel_pos[old_counter] = h_warped_pixel_pos[i];
         //         old_counter++;
         //     }
-        //     else{
-        //         h_new_warped_pixel_pos[old_counter] = h_warped_pixel_pos[i];
+        //     else
+        //     {
+        //         h_new_warped_pixel_pos[new_counter] = h_warped_pixel_pos[i];
         //         new_counter++;
         //     }
         // }
-        // LOG(INFO) << "wetf:" << std::endl;
-        // test_cuda(N, h_A, h_B, h_C);
 
-        // LOG(INFO) << "Number of old events:" << num_old_events << ", Number of new events:" << num_new_events;
-        // accumulatePolarityWrapper(h_new_warped_pixel_pos, h_old_warped_pixel_pos, h_IL_old, h_IL_new, IL_old_dim, IL_new_dim, num_new_events, num_old_events);
-        // LOG(INFO) << "AcummulatePolarityWrapper working";
-
-        // // Copy the new data over
-        // for (int i = 0; i < IL_new_.rows; i++)
+        // hmm
+        // for (int i = 0; i < num_old_events; i++)
         // {
-        //     for (int j = 0; j < IL_new_.cols; j++)
+        //     int xx = h_old_x_y[i].x;
+        //     int yy = h_old_x_y[i].y;
+        //     float dx = h_old_dx_dy[i].x;
+        //     float dy = h_old_dx_dy[i].y;
+        //     if (1 <= xx && xx < IL_old_.cols - 2 && 1 <= yy && yy < IL_old_.rows - 2)
         //     {
-        //         int idx = (i * IL_new_.rows) + j;
-        //         IL_new_.at<float>(i,j) = h_IL_new[idx];
+        //         IL_old_.at<float>(yy, xx) += (1.f - dx) * (1.f - dy);
+        //         IL_old_.at<float>(yy, xx + 1) += dx * (1.f - dy);
+        //         IL_old_.at<float>(yy + 1, xx) += (1.f - dx) * dy;
+        //         IL_old_.at<float>(yy + 1, xx + 1) += dx * dy;
         //     }
         // }
-        // for (int i = 0; i < IL_old_.rows; i++)
-        // {
-        //     for (int j = 0 ; j < IL_old_.cols; j++)
-        //     {
-        //         int idx = (i * IL_old_.rows) + j;
-        //         IL_old_.at<float>(i,j) = h_IL_old[idx];
-        //     }
-        // } // Uncomment from here
 
-        // std::cout << "ENDING!!1" << std::endl;
+        // for (int i = 0; i < num_new_events; i++)
+        // {
+        //     int xx = h_new_x_y[i].x;
+        //     int yy = h_new_x_y[i].y;
+        //     float dx = h_new_dx_dy[i].x;
+        //     float dy = h_new_dx_dy[i].y;
+        //     if (1 <= xx && xx < IL_old_.cols - 2 && 1 <= yy && yy < IL_old_.rows - 2)
+        //     {
+        //         IL_new_.at<float>(yy, xx) += (1.f - dx) * (1.f - dy);
+        //         IL_new_.at<float>(yy, xx + 1) += dx * (1.f - dy);
+        //         IL_new_.at<float>(yy + 1, xx) += (1.f - dx) * dy;
+        //         IL_new_.at<float>(yy + 1, xx + 1) += dx * dy;
+        //     }
+        // }
+
+        // Prepare data for bilinear fitting of events
+        int2 IL_old_dim {IL_old_.rows, IL_old_.cols}; // Uncomment from here
+        int2 IL_new_dim {IL_new_.rows, IL_new_.cols};
+        // std::cout << "IL_old_.rows:" << IL_old_.rows << std::endl;
+        // std::cout << "IL_old_.cols:" << IL_old_.cols << std::endl;
+
+        int IL_old_num_pixels = IL_old_.rows * IL_old_.cols;
+        float* h_IL_old = (float*)malloc(IL_old_num_pixels * sizeof(float));
+        for (int i = 0; i < IL_old_.rows; i++)
+        {
+            for (int j = 0 ; j < IL_old_.cols; j++)
+            {
+                int idx = (i * IL_old_.rows) + j;
+                h_IL_old[idx] = IL_old_.at<float>(i,j);
+            }
+        }
+        // std::memcpy(h_IL_old, IL_old_.ptr<float>(), IL_old_num_pixels * sizeof(float));
+
+        int IL_new_num_pixels = IL_new_.rows * IL_new_.cols;
+        float* h_IL_new = (float*)malloc(IL_new_num_pixels * sizeof(float));
+        for (int i = 0; i < IL_new_.rows; i++)
+        {
+            for (int j = 0; j < IL_new_.cols; j++)
+            {
+                int idx = (i * IL_new_.rows) + j;
+                h_IL_new[idx] = IL_new_.at<float>(i,j);
+            }
+        }
+        // std::memcpy(h_IL_new, IL_new_.ptr<float>(), IL_new_num_pixels * sizeof(float));
+
+        // Split warped pano pixel popsition to new and old to be appended on diff IL respectively
+        float2 *h_new_warped_pixel_pos = (float2 *)malloc(num_old_events * sizeof(float2));
+        float2 *h_old_warped_pixel_pos = (float2 *)malloc(num_new_events * sizeof(float2));
+        int old_counter = 0;
+        int new_counter = 0;
+        for (int i = 0; i < subset_size; i++)
+        {
+            if (h_oldevent[i] == true){
+                h_old_warped_pixel_pos[old_counter] = h_warped_pixel_pos[i];
+                old_counter++;
+            }
+            else{
+                h_new_warped_pixel_pos[old_counter] = h_warped_pixel_pos[i];
+                new_counter++;
+            }
+        }
+
+        LOG(INFO) << "Number of old events:" << num_old_events << ", Number of new events:" << num_new_events;
+        accumulatePolarityWrapper(h_new_warped_pixel_pos, h_old_warped_pixel_pos, h_IL_old, h_IL_new, IL_old_dim, IL_new_dim, num_new_events, num_old_events);
+        LOG(INFO) << "AcummulatePolarityWrapper working";
+
+        // Copy the new data over
+        for (int i = 0; i < IL_new_.rows; i++)
+        {
+            for (int j = 0; j < IL_new_.cols; j++)
+            {
+                int idx = (i * IL_new_.rows) + j;
+                IL_new_.at<float>(i,j) = h_IL_new[idx];
+            }
+        }
+        for (int i = 0; i < IL_old_.rows; i++)
+        {
+            for (int j = 0 ; j < IL_old_.cols; j++)
+            {
+                int idx = (i * IL_old_.rows) + j;
+                IL_old_.at<float>(i,j) = h_IL_old[idx];
+            }
+        } // Uncomment from here
+
         if (num_new_events > 0)
         {
-            // std::cout << "ENDING!!2" << std::endl;
             free(h_new_warped_pixel_pos);
         }
         if (num_old_events > 0)
         {
-            // std::cout << "ENDING!!3" << std::endl;
             free(h_old_warped_pixel_pos);
         }
 
-        // std::cout << "ENDING!!4" << std::endl;
         free(h_e_ray_cam);
-        // std::cout << "ENDING!!5" << std::endl;
-
         free(h_e_ray_rotated);
-        // std::cout << "ENDING!!6" << std::endl;
         free(h_warped_pixel_pos);
-        // std::cout << "ENDING!!7" << std::endl;
         // free(h_IL_new);
         // free(h_IL_old);
         free(h_oldevent);
-        // std::cout << "ENDING!!8" << std::endl;
 
         // std::memcpy(IL_old_.ptr<float>(), h_IL_old, IL_old_num_pixels * sizeof(float));
         // std::memcpy(IL_new_.ptr<float>(), h_IL_new, IL_new_num_pixels * sizeof(float));
