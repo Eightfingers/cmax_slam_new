@@ -40,9 +40,6 @@
     <param name="draw_FOV" value="true" /> <!-- Whether to draw the camera FOV on the panoramic map -->
   </node>
 
-  <!-- Play rosbag -->
-  <node pkg="rosbag" type="play" name="player" args="-d 1.0 -r 1.0 -u 10.0 /home/shuang/datasets/rpg_ijrr_dataset/shapes_rotation/events.bag" />
-
   <!-- Visualize local motion-compensated images of warped events -->
   <node name="local_iwe_view" pkg="image_view" type="image_view">
     <remap from="image" to="local_iwe" />

@@ -60,6 +60,11 @@ public:
         f_y = fy;
     }
 
+    void getCenter(Eigen::Vector2d &center_)
+    {
+        center_ = center;
+    }
+
 private:
     static std::pair<double, double> focalFromFOV(const cv::Size& imageSize, double hfov, double vfov) {
         return std::pair<double, double>(double((imageSize.width / hfov) * 180.0 / CV_PI),
