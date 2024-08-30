@@ -35,6 +35,19 @@ namespace cmax_slam
         precomputed_bearing_vectors_ = precomputed_bearing_vectors_ptr;
 
         VLOG(2) << "Event warper initialized";
+
+        // Initialize wrapper 
+        double fx, fy;
+        pano_cam_.getScalingFactors(fx, fy);
+        Eigen::Vector2d center;
+        pano_cam_.getCenter(center);
+        cuda_event_warper.setSubsetSize(100);
+        cuda_event_warper.setWarpingParameters(fx, fy, center[0], center[1]);
+        cuda_event_warper.setILOldNewSize(512, 1024, 512, 1024);
+        cuda_event_warper.mallocDeviceMemory();
+        cuda_event_warper.mallocHostMemory();
+        cuda_event_warper.checkInitializedSafely();
+
     }
 
     void EventWarper::warpEventToMap(const cv::Point2i &pt_in,
@@ -175,6 +188,7 @@ namespace cmax_slam
         // Create image of warped events);
         IL_old_.setTo(0);
         IL_new_.setTo(0);
+        cuda_event_warper.resetToZeroILOldNew();
 
         if (iwe_deriv != nullptr)
         {
@@ -237,24 +251,6 @@ namespace cmax_slam
                                               std::vector<dvs_msgs::Event>::iterator event_end,
                                               std::vector<cv::Mat> *iwe_deriv)
     {
-
-        // Run kernel w 256 threads
-        // Allocate host memory
-        // int N = 50;
-        // float* h_A = (float*)malloc(N * sizeof(float));
-        // float* h_B = (float*)malloc(N * sizeof(float));
-        // float* h_C = (float*)malloc(N * sizeof(float));
-
-        // LOG(INFO) << "Test cuda ..";
-        // test_cuda(N, h_A, h_B, h_C);
-        // test_cuda(N, h_A, h_B, h_C);
-        // test_cuda(N, h_A, h_B, h_C);
-        // LOG(INFO) << "Test cuda worked";
-        // // Free host memory
-        // free(h_A);
-        // free(h_B);
-        // free(h_C);
-        // Measure time at the start
         auto start = std::chrono::high_resolution_clock::now();
         static double totalTime = 0; // Static variable to accumulate total time
         static int numRuns = 0;      // Static variable to keep track of the number of runs
@@ -293,50 +289,41 @@ namespace cmax_slam
 
         // Prepare memories
         int subset_size = std::distance(event_begin, event_end);
-        float3 *h_e_ray_cam = (float3 *)malloc(subset_size * sizeof(float3)); // Unused
-        float3 *h_e_ray_rotated = (float3 *)malloc(subset_size * sizeof(float3));
-        float2 *h_warped_pixel_pos = (float2 *)malloc(subset_size * sizeof(float2));
         bool *h_oldevent = (bool *)malloc(subset_size * sizeof(bool));
 
-        if (h_e_ray_cam == nullptr || h_e_ray_rotated == nullptr || h_warped_pixel_pos == nullptr || h_oldevent == nullptr)
-        {
-            LOG(ERROR) << "Memory allocation failed";
-            // Handle allocation failure if necessary
-            free(h_e_ray_cam);
-            free(h_e_ray_rotated);
-            free(h_warped_pixel_pos);
-            free(h_oldevent);
-        }
 
-        // Get h_e_ray_rotated from bearing vectors and check if event is out of date too
+        // Get the roatted event ray from bearing vectors and check if event is out of date too
         int num_old_events = 0;
         int num_new_events = 0;
+        // LOG(INFO) << "Looping thru subset" << std::endl;
+        cuda_event_warper.setSubsetSize(subset_size);
+
         for (int i = 0; i < subset_size; i++)
         {
             auto ev = event_begin + i;
             const cv::Point3d bvec = precomputed_bearing_vectors_->at(ev->y * sensor_width_ + ev->x);
 
             // Rotate according to pose(t)
-            // Eigen::Vector3d e_ray_cam(bvec.x, bvec.y, bvec.z);
-            // Eigen::Vector3d e_ray_w = R_eigen * e_ray_cam; // Can be cudafied ?
+            Eigen::Vector3d e_ray_cam(bvec.x, bvec.y, bvec.z);
+            Eigen::Vector3d e_ray_w = R_eigen * e_ray_cam; // Not worth
+            // float h_R[9];
+            // float h_vec[3] = {(float)bvec.x, (float)bvec.y, (float)bvec.z};
+            // float h_result[3];
 
-            float h_R[9];
-            float h_vec[3] = {(float)bvec.x, (float)bvec.y, (float)bvec.z};
-            float h_result[3];
+            // for (int i = 0; i < 3; ++i)
+            // {
+            //     for (int j = 0; j < 3; ++j)
+            //     {
+            //         h_R[i * 3 + j] = static_cast<float>(R_eigen(i, j));
+            //     }
+            // }
 
-            for (int i = 0; i < 3; ++i)
-            {
-                for (int j = 0; j < 3; ++j)
-                {
-                    h_R[i * 3 + j] = static_cast<float>(R_eigen(i, j));
-                }
-            }
+            // matrixVectorMultWrapper(h_R, h_vec, h_result);
 
-            matrixVectorMultWrapper(h_R, h_vec, h_result);
-
-            h_e_ray_rotated[i].x = h_result[0];
-            h_e_ray_rotated[i].y = h_result[1];
-            h_e_ray_rotated[i].z = h_result[2];
+            // h_e_ray_rotated[i].x = h_result[0];
+            // h_e_ray_rotated[i].y = h_result[1];
+            // h_e_ray_rotated[i].z = h_result[2];
+            cuda_event_warper.updateEventRotatedRayArr(i, e_ray_w[0], e_ray_w[1], e_ray_w[2]);
 
             if (ev->ts < t_next_win_beg_)
             {
@@ -349,156 +336,61 @@ namespace cmax_slam
                 num_new_events += 1;
             }
         }
+
         // LOG(INFO) << "Number of old events:" << num_old_events << ", Number of new events:" << num_new_events;
+        cuda_event_warper.warpEventsWrapper();
+        // LOG(INFO) << "Finished calling warpEventsWrapper" << std::endl;
 
-        double fx, fy;
-        pano_cam_.getScalingFactors(fx, fy);
-        Eigen::Vector2d center;
-        pano_cam_.getCenter(center);
-        float2 center_{(float)center[0], (float)center[1]};
+        float2 *h_warped_pixel_pos = cuda_event_warper.getWarpedPixelPosPtr();
 
-        // std::cout << "fx:" << fx << std::endl;
-        // std::cout << "fy:" << fy << std::endl;
-        // std::cout << "center[0]:" << center[0] << std::endl;
-        // std::cout << "center[1]:" << center[1] << std::endl;
-
-        // Warp event pixels to get new warped pixel positions
-        warpEventsWrapper(h_e_ray_rotated, h_warped_pixel_pos, center_, fx, fy, subset_size);
-        // Split warped pano pixel popsition to new and old to be appended on diff IL respectively
-
-        // float2 *h_new_warped_pixel_pos;
+        // Split warped pano pixel popsitions to new and old to be appended on diff IL respectively
+        float2 *h_new_warped_pixel_pos;
         // int2 *h_new_x_y;
         // float2 *h_new_dx_dy;
 
-        // float2 *h_old_warped_pixel_pos;
+        float2 *h_old_warped_pixel_pos;
         // int2 *h_old_x_y;
         // float2 *h_old_dx_dy;
 
-        // if (num_new_events > 0)
-        // {
-        //     h_new_warped_pixel_pos = (float2 *)malloc(num_new_events * sizeof(float2));
-        //     h_new_x_y = (int2 *)malloc(num_new_events * sizeof(int2));
-        //     h_new_dx_dy = (float2 *)malloc(num_new_events * sizeof(float2));
-        //     getIntAndDecimalWrapper(h_new_warped_pixel_pos, h_new_x_y, h_new_dx_dy, num_new_events);
-        //     free(h_new_x_y);
-        //     free(h_new_dx_dy);
-        // }
-
-        // if (num_old_events > 0)
-        // {
-        //     h_old_warped_pixel_pos = (float2 *)malloc(num_old_events * sizeof(float2));
-        //     h_old_x_y = (int2 *)malloc(num_old_events * sizeof(int2));
-        //     h_old_dx_dy = (float2 *)malloc(num_old_events * sizeof(float2));
-        //     getIntAndDecimalWrapper(h_old_warped_pixel_pos, h_old_x_y, h_old_dx_dy, num_old_events);
-        //     free(h_old_x_y);
-        //     free(h_old_dx_dy);
-        // }
-
-        // int old_counter = 0;
-        // int new_counter = 0;
-        // for (int i = 0; i < subset_size; i++)
-        // {
-        //     if (h_oldevent[i] == true)
-        //     {
-        //         h_old_warped_pixel_pos[old_counter] = h_warped_pixel_pos[i];
-        //         old_counter++;
-        //     }
-        //     else
-        //     {
-        //         h_new_warped_pixel_pos[new_counter] = h_warped_pixel_pos[i];
-        //         new_counter++;
-        //     }
-        // }
-
-        // hmm
-        // for (int i = 0; i < num_old_events; i++)
-        // {
-        //     int xx = h_old_x_y[i].x;
-        //     int yy = h_old_x_y[i].y;
-        //     float dx = h_old_dx_dy[i].x;
-        //     float dy = h_old_dx_dy[i].y;
-        //     if (1 <= xx && xx < IL_old_.cols - 2 && 1 <= yy && yy < IL_old_.rows - 2)
-        //     {
-        //         IL_old_.at<float>(yy, xx) += (1.f - dx) * (1.f - dy);
-        //         IL_old_.at<float>(yy, xx + 1) += dx * (1.f - dy);
-        //         IL_old_.at<float>(yy + 1, xx) += (1.f - dx) * dy;
-        //         IL_old_.at<float>(yy + 1, xx + 1) += dx * dy;
-        //     }
-        // }
-
-        // for (int i = 0; i < num_new_events; i++)
-        // {
-        //     int xx = h_new_x_y[i].x;
-        //     int yy = h_new_x_y[i].y;
-        //     float dx = h_new_dx_dy[i].x;
-        //     float dy = h_new_dx_dy[i].y;
-        //     if (1 <= xx && xx < IL_old_.cols - 2 && 1 <= yy && yy < IL_old_.rows - 2)
-        //     {
-        //         IL_new_.at<float>(yy, xx) += (1.f - dx) * (1.f - dy);
-        //         IL_new_.at<float>(yy, xx + 1) += dx * (1.f - dy);
-        //         IL_new_.at<float>(yy + 1, xx) += (1.f - dx) * dy;
-        //         IL_new_.at<float>(yy + 1, xx + 1) += dx * dy;
-        //     }
-        // }
-
-        // Prepare data for bilinear fitting of events
-        int2 IL_old_dim {IL_old_.rows, IL_old_.cols}; // Uncomment from here
-        int2 IL_new_dim {IL_new_.rows, IL_new_.cols};
-        // std::cout << "IL_old_.rows:" << IL_old_.rows << std::endl;
-        // std::cout << "IL_old_.cols:" << IL_old_.cols << std::endl;
-
-        int IL_old_num_pixels = IL_old_.rows * IL_old_.cols;
-        float* h_IL_old = (float*)malloc(IL_old_num_pixels * sizeof(float));
-        for (int i = 0; i < IL_old_.rows; i++)
+        if (num_new_events > 0)
         {
-            for (int j = 0 ; j < IL_old_.cols; j++)
-            {
-                int idx = (i * IL_old_.rows) + j;
-                h_IL_old[idx] = IL_old_.at<float>(i,j);
-            }
+            h_new_warped_pixel_pos = (float2 *)malloc(num_new_events * sizeof(float2));
         }
-        // std::memcpy(h_IL_old, IL_old_.ptr<float>(), IL_old_num_pixels * sizeof(float));
 
-        int IL_new_num_pixels = IL_new_.rows * IL_new_.cols;
-        float* h_IL_new = (float*)malloc(IL_new_num_pixels * sizeof(float));
-        for (int i = 0; i < IL_new_.rows; i++)
+        if (num_old_events > 0)
         {
-            for (int j = 0; j < IL_new_.cols; j++)
-            {
-                int idx = (i * IL_new_.rows) + j;
-                h_IL_new[idx] = IL_new_.at<float>(i,j);
-            }
+            h_old_warped_pixel_pos = (float2 *)malloc(num_old_events * sizeof(float2));
         }
-        // std::memcpy(h_IL_new, IL_new_.ptr<float>(), IL_new_num_pixels * sizeof(float));
 
-        // Split warped pano pixel popsition to new and old to be appended on diff IL respectively
-        float2 *h_new_warped_pixel_pos = (float2 *)malloc(num_old_events * sizeof(float2));
-        float2 *h_old_warped_pixel_pos = (float2 *)malloc(num_new_events * sizeof(float2));
+        // Split warped pixel position to old and new
         int old_counter = 0;
         int new_counter = 0;
         for (int i = 0; i < subset_size; i++)
         {
-            if (h_oldevent[i] == true){
+            if (h_oldevent[i] == true)
+            {
                 h_old_warped_pixel_pos[old_counter] = h_warped_pixel_pos[i];
                 old_counter++;
             }
-            else{
-                h_new_warped_pixel_pos[old_counter] = h_warped_pixel_pos[i];
+            else
+            {
+                h_new_warped_pixel_pos[new_counter] = h_warped_pixel_pos[i];
                 new_counter++;
             }
         }
 
-        LOG(INFO) << "Number of old events:" << num_old_events << ", Number of new events:" << num_new_events;
-        accumulatePolarityWrapper(h_new_warped_pixel_pos, h_old_warped_pixel_pos, h_IL_old, h_IL_new, IL_old_dim, IL_new_dim, num_new_events, num_old_events);
-        LOG(INFO) << "AcummulatePolarityWrapper working";
-
+        // Call cuda kernel
+        cuda_event_warper.accumulatePolarityWrapper(h_new_warped_pixel_pos, h_old_warped_pixel_pos, num_new_events, num_old_events);
         // Copy the new data over
+        float *IL_new_ptr = cuda_event_warper.getILNewPtr();
+        float *IL_old_ptr = cuda_event_warper.getILOldPtr();
+
         for (int i = 0; i < IL_new_.rows; i++)
         {
             for (int j = 0; j < IL_new_.cols; j++)
             {
                 int idx = (i * IL_new_.rows) + j;
-                IL_new_.at<float>(i,j) = h_IL_new[idx];
+                IL_new_.at<float>(i,j) = IL_new_ptr[idx];
             }
         }
         for (int i = 0; i < IL_old_.rows; i++)
@@ -506,9 +398,9 @@ namespace cmax_slam
             for (int j = 0 ; j < IL_old_.cols; j++)
             {
                 int idx = (i * IL_old_.rows) + j;
-                IL_old_.at<float>(i,j) = h_IL_old[idx];
+                IL_old_.at<float>(i,j) = IL_old_ptr[idx];
             }
-        } // Uncomment from here
+        }
 
         if (num_new_events > 0)
         {
@@ -519,102 +411,7 @@ namespace cmax_slam
             free(h_old_warped_pixel_pos);
         }
 
-        free(h_e_ray_cam);
-        free(h_e_ray_rotated);
-        free(h_warped_pixel_pos);
-        // free(h_IL_new);
-        // free(h_IL_old);
         free(h_oldevent);
-
-        // std::memcpy(IL_old_.ptr<float>(), h_IL_old, IL_old_num_pixels * sizeof(float));
-        // std::memcpy(IL_new_.ptr<float>(), h_IL_new, IL_new_num_pixels * sizeof(float));
-
-        // for (auto ev = event_begin; ev < event_end; ev += warp_opt_.event_sample_rate)
-        // {
-        //     // Get bearing vector (in look-up-table) corresponding to current event's pixel
-        //     const cv::Point3d bvec = precomputed_bearing_vectors_->at(ev->y * sensor_width_ + ev->x);
-        //     Eigen::Vector3d e_ray_cam(bvec.x, bvec.y, bvec.z);
-
-        //     // Rotate according to pose(t)
-        //     Eigen::Vector3d e_ray_w = R_eigen * e_ray_cam;
-
-        //     // Project onto the panoramic map
-        //     Eigen::Vector2d px_mosaic;
-        //     cv::Matx23f dpm_drb; // dpm_drb
-        //     px_mosaic = pano_cam_.projectToImage(e_ray_w, &dpm_drb);
-        //     cv::Point2d warped_pt(px_mosaic[0], px_mosaic[1]);
-
-        //     // Compute derivative jac_warped_pt_wrt_traj
-        //     if (iwe_deriv != nullptr)
-        //     {
-        //         const cv::Point3d rb = R_cv * bvec;
-        //         cv::Matx33f drb_ddrot(0, rb.z, -rb.y, -rb.z, 0, rb.x, rb.y, -rb.x, 0);
-        //         cv::Matx23f dpm_ddrot = dpm_drb * drb_ddrot;
-
-        //         // chain rule: dpm_ddrot_cp = dpm_dpw(rb is pw) * dpw_ddrot * ddrot_ddrot_cp
-        //         jac_warped_pt_wrt_traj = dpm_ddrot * ddrot_ddrot_cp;
-        //     }
-
-        //     // Accumulate warped events, using bilinear voting (polarity or count)
-        //     // Bilinear voting is better than nearest neighbor to get good derivative images
-        //     const int xx = warped_pt.x,
-        //               yy = warped_pt.y;
-        //     // if ( h_x_y[wtf].x == xx && h_x_y[wtf].y == yy)
-        //     // {
-        //     //     LOG(INFO) << "CORRECT!!!!!!!!!!!!!!!!";
-        //     // }
-        //     // else
-        //     // {
-        //     //     LOG(INFO) << "xx:" << xx << "h_warped_pixel_pos[i].x:" << h_x_y[wtf].x;
-        //     //     LOG(INFO) << "FALSEZZzZZZZZZZZZZZZZZZZZZZZz";
-        //     // }
-        //     // wtf++;
-
-        //     const float dx = warped_pt.x - xx,
-        //                 dy = warped_pt.y - yy;
-
-        //     // if warped point is within the image, accumulate polarity
-        //     if (1 <= xx && xx < IL_old_.cols - 2 && 1 <= yy && yy < IL_old_.rows - 2)
-        //     {
-        //         if (ev->ts < t_next_win_beg_) // check if this event will be out of date
-        //         {
-        //             IL_old_.at<float>(yy, xx) += (1.f - dx) * (1.f - dy);
-        //             IL_old_.at<float>(yy, xx + 1) += dx * (1.f - dy);
-        //             IL_old_.at<float>(yy + 1, xx) += (1.f - dx) * dy;
-        //             IL_old_.at<float>(yy + 1, xx + 1) += dx * dy;
-        //         }
-        //         else
-        //         {
-        //             IL_new_.at<float>(yy, xx) += (1.f - dx) * (1.f - dy);
-        //             IL_new_.at<float>(yy, xx + 1) += dx * (1.f - dy);
-        //             IL_new_.at<float>(yy + 1, xx) += (1.f - dx) * dy;
-        //             IL_new_.at<float>(yy + 1, xx + 1) += dx * dy;
-        //         }
-
-        //         if (iwe_deriv != nullptr)
-        //         {
-        //             CHECK_NOTNULL(&jac_warped_pt_wrt_traj);
-        //             for (int i = 0; i < 3 * traj->NumInvolvedControlPoses(); i++)
-        //             {
-        //                 const float r0 = jac_warped_pt_wrt_traj.at<float>(0, i);
-        //                 const float r1 = jac_warped_pt_wrt_traj.at<float>(1, i);
-
-        //                 // int j = 3 * idx_cp_beg + i;
-        //                 int j = 3 * (idx_cp_beg - num_cps_fixed_) + i;
-        //                 if (j >= 0)
-        //                 {
-        //                     // Using Kronecker delta formulation and only differentiating weigths of bilinear voting
-        //                     // acccumulate contribution of all events for line 76 - 79
-        //                     iwe_deriv->at(j).at<float>(yy, xx) += r0 * (-(1.f - dy)) + r1 * (-(1.f - dx));
-        //                     iwe_deriv->at(j).at<float>(yy, xx + 1) += r0 * (1.f - dy) + r1 * (-dx);
-        //                     iwe_deriv->at(j).at<float>(yy + 1, xx) += r0 * (-dy) + r1 * (1.f - dx);
-        //                     iwe_deriv->at(j).at<float>(yy + 1, xx + 1) += r0 * dy + r1 * dx;
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
-
         // Measure time at the end
         auto end = std::chrono::high_resolution_clock::now();
 
@@ -627,6 +424,5 @@ namespace cmax_slam
         double averageTime = totalTime / numRuns;
         // std::cout << "Average run time after " << numRuns << " run(s): " << averageTime << " ms" << std::endl;
         std::cout << "elapsed " << elapsed.count() << " ms" << std::endl;
-
     }
 }

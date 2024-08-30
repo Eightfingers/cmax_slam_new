@@ -15,6 +15,8 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <image_geometry/pinhole_camera_model.h>
 
+#include "event_pano_warper_cuda.h"
+
 namespace cmax_slam {
 
 class EventWarper{
@@ -112,6 +114,8 @@ private:
 
     // For updating alpha
     bool first_iter_;
+
+    CudaEventWarper cuda_event_warper;
 };
 
 }
