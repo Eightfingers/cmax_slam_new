@@ -32,6 +32,7 @@ public:
     float *getILOldPtr(){return h_IL_old_;};
     float *getILNewPtr(){return h_IL_new_;};
     void resetToZeroILOldNew();
+    void resetToZeroXXYY(int num_old_events, int num_new_events);
 
     void updateEventRotatedRayArr(int idx, float x, float y, float z);
 
@@ -58,13 +59,13 @@ private:
     float *h_IL_new_ = nullptr;
 
     // To accumulate on pano
-    // float2 *d_new_xx_yy_ = nullptr;
-    // float2 *d_new_dx_dy_ = nullptr;
-    // int2 *d_new_x_y_ = nullptr;
+    float2 *d_new_xx_yy_ = nullptr;
+    float2 *d_new_dx_dy_ = nullptr;
+    int2 *d_new_x_y_ = nullptr;
 
-    // float2 *d_old_xx_yy_ = nullptr;
-    // float2 *d_old_dx_dy_ = nullptr;
-    // int2 *d_old_x_y_ = nullptr;
+    float2 *d_old_xx_yy_ = nullptr;
+    float2 *d_old_dx_dy_ = nullptr;
+    int2 *d_old_x_y_ = nullptr;
 };
 
 __global__ void add_kernel(float *A, float *B, float *C, int N);
@@ -77,4 +78,6 @@ __global__ void warpEvents(float3 *h_rotated_ray, float2 *warped_pixel_pose, flo
 __global__ void simpleAccumulateIL(float *d_IL, int IL_old_row, int IL_old_cols, int2 *d_xy, float2 *d_dxdy, int n);
 __global__ void getIntAndDecimal(float2 *xx_yy, float2 *dx_dy, int2 *x_y, int n);
 __global__ void setILToZero(float *d_IL, int IL_old_row, int IL_old_cols);
+__global__ void setFloat2ArrZero(float2 *d_xx_yy, int n);
+__global__ void setInt2ArrZero(int2 *d_x_y, int n);
 

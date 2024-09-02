@@ -41,7 +41,7 @@ namespace cmax_slam
         pano_cam_.getScalingFactors(fx, fy);
         Eigen::Vector2d center;
         pano_cam_.getCenter(center);
-        cuda_event_warper.setSubsetSize(100);
+        cuda_event_warper.setSubsetSize(200);
         cuda_event_warper.setWarpingParameters(fx, fy, center[0], center[1]);
         cuda_event_warper.setILOldNewSize(512, 1024, 512, 1024);
         cuda_event_warper.mallocDeviceMemory();
@@ -189,7 +189,6 @@ namespace cmax_slam
         IL_old_.setTo(0);
         IL_new_.setTo(0);
         cuda_event_warper.resetToZeroILOldNew();
-
         if (iwe_deriv != nullptr)
         {
             // Create images of the derivative of the warped events wrt pose parameters
@@ -413,6 +412,9 @@ namespace cmax_slam
 
         free(h_oldevent);
         // Measure time at the end
+
+        cuda_event_warper.resetToZeroXXYY(num_old_events, num_new_events);
+
         auto end = std::chrono::high_resolution_clock::now();
 
         // Calculate the elapsed time in milliseconds

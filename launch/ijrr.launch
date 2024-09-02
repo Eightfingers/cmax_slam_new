@@ -12,7 +12,7 @@
     <!-- Event warping options -->
     <param name="frontend_blur_sigma" value="1.0" /> <!-- Gaussian blurring for the local CMax, in front-end -->
     <param name="backend_blur_sigma" value="1.0" /> <!-- Gaussian blurring for the global CMax, in back-end -->
-    <param name="event_batch_size" value="100" /> <!-- Number of events in each event mini-batch -->
+    <param name="event_batch_size" value="200" /> <!-- Number of events in each event mini-batch -->
     <!-- Event subsampling -->
     <param name="frontend_event_sample_rate" value="1" /> <!-- Uniform event sampling rate, in front-end -->
     <param name="backend_event_sample_rate" value="1" /> <!-- Further uniform event sampling rate, in back-end -->

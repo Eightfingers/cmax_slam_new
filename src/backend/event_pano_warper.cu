@@ -17,27 +17,62 @@ CudaEventWarper::~CudaEventWarper()
     cudaFree(d_IL_old_);
     cudaFree(d_IL_new_);
 
+    checkCudaErrors(cudaFree(d_new_xx_yy_));
+    checkCudaErrors(cudaFree(d_new_dx_dy_));
+    checkCudaErrors(cudaFree(d_new_x_y_));
+
+    checkCudaErrors(cudaFree(d_new_xx_yy_));
+    checkCudaErrors(cudaFree(d_old_dx_dy_));
+    checkCudaErrors(cudaFree(d_old_x_y_));
+
     free(h_e_ray_cam_);
     free(h_e_ray_rotated_);
     free(h_warped_pixel_pos_);
     free(h_oldevent_);
     free(h_IL_old_);
     free(h_IL_new_);
-
 }
 
 void CudaEventWarper::resetToZeroILOldNew()
 {
-
     setILToZero<<<(IL_old_rows_ + 255) / 256, 256>>>(d_IL_old_, IL_old_rows_, IL_old_cols_);
     setILToZero<<<(IL_new_rows_ + 255) / 256, 256>>>(d_IL_new_, IL_old_rows_, IL_old_cols_);
+
     checkCudaErrors(cudaDeviceSynchronize());
+}
+
+void CudaEventWarper::resetToZeroXXYY(int num_old_events, int num_new_events)
+{
+    if (num_old_events > 0)
+    {
+        setFloat2ArrZero<<<(subset_size_ + 255) / 256, 256>>>(d_old_xx_yy_, subset_size_);
+        setFloat2ArrZero<<<(subset_size_ + 255) / 256, 256>>>(d_old_dx_dy_, subset_size_);
+        setInt2ArrZero<<<(subset_size_ + 255) / 256, 256>>>(d_old_x_y_, subset_size_);
+    }
+
+    if (num_new_events > 0)
+    {
+        setFloat2ArrZero<<<(subset_size_ + 255) / 256, 256>>>(d_new_xx_yy_, subset_size_);
+        setFloat2ArrZero<<<(subset_size_ + 255) / 256, 256>>>(d_new_dx_dy_, subset_size_);
+        setInt2ArrZero<<<(subset_size_ + 255) / 256, 256>>>(d_new_x_y_, subset_size_);
+    }
+
+    // checkCudaErrors(cudaGetLastError());
+    // checkCudaErrors(cudaDeviceSynchronize());
 }
 
 void CudaEventWarper::mallocDeviceMemory()
 {
     checkCudaErrors(cudaMalloc(&d_warped_pixels_, subset_size_ * sizeof(float2)));
     checkCudaErrors(cudaMalloc(&d_rotated_ray_, subset_size_ * sizeof(float3)));
+
+    checkCudaErrors(cudaMalloc(&d_new_xx_yy_, subset_size_ * sizeof(float2)));
+    checkCudaErrors(cudaMalloc(&d_new_dx_dy_, subset_size_ * sizeof(float2)));
+    checkCudaErrors(cudaMalloc(&d_new_x_y_, subset_size_ * sizeof(int2)));
+
+    checkCudaErrors(cudaMalloc(&d_old_xx_yy_, subset_size_ * sizeof(float2)));
+    checkCudaErrors(cudaMalloc(&d_old_dx_dy_, subset_size_ * sizeof(float2)));
+    checkCudaErrors(cudaMalloc(&d_old_x_y_, subset_size_ * sizeof(int2)));
 
     checkCudaErrors(cudaMalloc(&d_IL_old_, IL_old_rows_ * IL_old_cols_ * sizeof(float)));
     checkCudaErrors(cudaMalloc(&d_IL_new_, IL_new_rows_ * IL_new_cols_ * sizeof(float)));
@@ -50,8 +85,8 @@ void CudaEventWarper::mallocHostMemory()
     h_warped_pixel_pos_ = (float2 *)malloc(subset_size_ * sizeof(float2));
     h_oldevent_ = (bool *)malloc(subset_size_ * sizeof(bool));
 
-    h_IL_old_ =  (float*)malloc(IL_old_rows_ * IL_old_cols_ * sizeof(float));
-    h_IL_new_ =  (float*)malloc(IL_new_rows_ * IL_new_cols_ * sizeof(float));
+    h_IL_old_ = (float *)malloc(IL_old_rows_ * IL_old_cols_ * sizeof(float));
+    h_IL_new_ = (float *)malloc(IL_new_rows_ * IL_new_cols_ * sizeof(float));
 }
 
 void CudaEventWarper::checkInitializedSafely()
@@ -78,7 +113,7 @@ void CudaEventWarper::checkInitializedSafely()
         std::cout << "fx_: " << fx_ << ", fy_: " << fy_ << ", center_x_: " << center_x_ << ", center_y_: " << center_y_ << std::endl;
     }
 
-    if (IL_old_rows_  == 0 || IL_old_cols_ == 0 || IL_new_rows_ == 0 || IL_new_cols_ == 0)
+    if (IL_old_rows_ == 0 || IL_old_cols_ == 0 || IL_new_rows_ == 0 || IL_new_cols_ == 0)
     {
         std::cout << "Panaroma Size Not yet initialized! " << std::endl;
     }
@@ -106,55 +141,46 @@ void CudaEventWarper::warpEventsWrapper()
 
 void CudaEventWarper::accumulatePolarityWrapper(float2 *h_new_warped_pixel_pos, float2 *h_old_warped_pixel_pos, int num_new_events, int num_old_events)
 {
-    float2 *d_new_xx_yy = nullptr;
-    float2 *d_new_dx_dy = nullptr;
-    int2 *d_new_x_y = nullptr;
-
-    float2 *d_old_xx_yy = nullptr;
-    float2 *d_old_dx_dy = nullptr;
-    int2 *d_old_x_y = nullptr;
-
     if (num_new_events > 0)
     {
+        // checkCudaErrors(cudaMalloc(&d_new_xx_yy_, num_new_events * sizeof(float2)));
+        checkCudaErrors(cudaMemcpy(d_new_xx_yy_, h_new_warped_pixel_pos, num_new_events * sizeof(float2), cudaMemcpyHostToDevice));
 
-        checkCudaErrors(cudaMalloc(&d_new_xx_yy, num_new_events * sizeof(float2)));
-        checkCudaErrors(cudaMemcpy(d_new_xx_yy, h_new_warped_pixel_pos, num_new_events * sizeof(float2), cudaMemcpyHostToDevice));
+        // checkCudaErrors(cudaMalloc(&d_new_dx_dy_, num_new_events * sizeof(float2)));
+        // checkCudaErrors(cudaMalloc(&d_new_x_y_, num_new_events * sizeof(int2)));
 
-        checkCudaErrors(cudaMalloc(&d_new_dx_dy, num_new_events * sizeof(float2)));
-        checkCudaErrors(cudaMalloc(&d_new_x_y, num_new_events * sizeof(int2)));
-
-        getIntAndDecimal<<<(num_new_events + 255) / 256, 256>>>(d_new_xx_yy, d_new_dx_dy, d_new_x_y, num_new_events);
+        getIntAndDecimal<<<(num_new_events + 255) / 256, 256>>>(d_new_xx_yy_, d_new_dx_dy_, d_new_x_y_, num_new_events);
         cudaDeviceSynchronize();
 
-        simpleAccumulateIL<<<(num_new_events + 255) / 256, 256>>>(d_IL_new_, IL_new_rows_, IL_new_cols_, d_new_x_y, d_new_dx_dy, num_new_events);
+        simpleAccumulateIL<<<(num_new_events + 255) / 256, 256>>>(d_IL_new_, IL_new_rows_, IL_new_cols_, d_new_x_y_, d_new_dx_dy_, num_new_events);
         cudaDeviceSynchronize();
 
         checkCudaErrors(cudaMemcpy(h_IL_new_, d_IL_new_, IL_new_rows_ * IL_new_cols_ * sizeof(float), cudaMemcpyDeviceToHost));
-        checkCudaErrors(cudaFree(d_new_xx_yy));
-        checkCudaErrors(cudaFree(d_new_dx_dy));
-        checkCudaErrors(cudaFree(d_new_x_y));
+        // checkCudaErrors(cudaFree(d_new_xx_yy_));
+        // checkCudaErrors(cudaFree(d_new_dx_dy_));
+        // checkCudaErrors(cudaFree(d_new_x_y_));
     }
 
     if (num_old_events > 0)
     {
-        checkCudaErrors(cudaMalloc(&d_old_xx_yy, num_old_events * sizeof(float2)));
-        checkCudaErrors(cudaMemcpy(d_old_xx_yy, h_old_warped_pixel_pos, num_old_events * sizeof(float2), cudaMemcpyHostToDevice));
+        // checkCudaErrors(cudaMalloc(&d_new_xx_yy_, num_old_events * sizeof(float2)));
+        checkCudaErrors(cudaMemcpy(d_new_xx_yy_, h_old_warped_pixel_pos, num_old_events * sizeof(float2), cudaMemcpyHostToDevice));
 
-        checkCudaErrors(cudaMalloc(&d_old_dx_dy, num_old_events * sizeof(float2)));
-        checkCudaErrors(cudaMalloc(&d_old_x_y, num_old_events * sizeof(int2)));
+        // checkCudaErrors(cudaMalloc(&d_old_dx_dy_, num_old_events * sizeof(float2)));
+        // checkCudaErrors(cudaMalloc(&d_old_x_y_, num_old_events * sizeof(int2)));
 
-        getIntAndDecimal<<<(num_old_events + 255) / 256, 256>>>(d_old_xx_yy, d_old_dx_dy, d_old_x_y, num_old_events);
+        getIntAndDecimal<<<(num_old_events + 255) / 256, 256>>>(d_new_xx_yy_, d_old_dx_dy_, d_old_x_y_, num_old_events);
         cudaDeviceSynchronize();
         checkCudaErrors(cudaGetLastError());
 
-        simpleAccumulateIL<<<(num_old_events + 255) / 256, 256>>>(d_IL_old_, IL_old_rows_, IL_old_cols_, d_old_x_y, d_old_dx_dy, num_old_events);
+        simpleAccumulateIL<<<(num_old_events + 255) / 256, 256>>>(d_IL_old_, IL_old_rows_, IL_old_cols_, d_old_x_y_, d_old_dx_dy_, num_old_events);
         cudaDeviceSynchronize();
         checkCudaErrors(cudaGetLastError());
 
         checkCudaErrors(cudaMemcpy(h_IL_old_, d_IL_old_, IL_old_rows_ * IL_old_cols_ * sizeof(float), cudaMemcpyDeviceToHost));
-        checkCudaErrors(cudaFree(d_old_xx_yy));
-        checkCudaErrors(cudaFree(d_old_dx_dy));
-        checkCudaErrors(cudaFree(d_old_x_y));
+        // checkCudaErrors(cudaFree(d_new_xx_yy_));
+        // checkCudaErrors(cudaFree(d_old_dx_dy_));
+        // checkCudaErrors(cudaFree(d_old_x_y_));
     }
 }
 
@@ -182,11 +208,33 @@ __global__ void setILToZero(float *d_IL, int IL_old_row, int IL_old_cols)
 
     if (idx < IL_old_row)
     {
-        for (int i = 0; i < IL_old_cols; i ++)
+        for (int i = 0; i < IL_old_cols; i++)
         {
             int index = idx * IL_old_row + i;
             d_IL[index] = 0;
         }
+    }
+}
+
+__global__ void setFloat2ArrZero(float2 *d_xx_yy, int n)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < n)
+    {
+        d_xx_yy[idx].x = 0;
+        d_xx_yy[idx].y = 0;
+    }
+}
+
+__global__ void setInt2ArrZero(int2 *d_x_y, int n)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < n)
+    {
+        d_x_y[idx].x = 0;
+        d_x_y[idx].y = 0;
     }
 }
 
